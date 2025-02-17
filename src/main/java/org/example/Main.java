@@ -5,10 +5,9 @@ import java.util.*;
 
 public class Main {
 
-    /// CONSTANTS
     static final private Scanner cinScan = new Scanner(System.in);
     static final private String rootPath = ".";
-    static final private String masterFileName = "masterfile.txt";
+    static final private String masterFileName = "masterlist.txt";
     static final private ArrayList<String> videoExtensions = new ArrayList<>(List.of("mkv", "mov", "mp4", "avi"));
     static final private LinkedHashMap<String, String[]> permittedValues = new LinkedHashMap<>(Map.of(
             "Filename", new String[]{""},
@@ -19,37 +18,25 @@ public class Main {
             "AudioCodec", new String[]{"AAC", "DD", "DTS-HD", "FLAC"},
             "VideoCodec", new String[]{"H264", "H265", "AV1"}));
 
-// FILE HANDLING
 
-    private LinkedHashMap<String, String[]> getFileInfo(String filename) {
-        return null;
-    }
-
-//    public class FileHandlerResult {
-//        private boolean successful = false;
-//        private File fileHandler = null;
-//        public FileHandlerResult(boolean success, File fileH) {
-//            this.successful = success;
-//            this.fileHandler = fileH;
-//        }
-//        public boolean wasSuccessful(){ return successful; }
-//        public File getfileHandler(){ return fileHandler; }
-//
-//    }
-
-    private static boolean isFileAccessible(String filename) {
-        Path filepath = Paths.get(filename);
-        return Files.exists(filepath) && Files.isWritable(filepath) && Files.isReadable(filepath);
-    }
-
-//    private FileHandlerResult openFile(String filename){
-//        if (!isFileAccessible(filename)) { return new FileHandlerResult(false, null); }
-//        return new FileHandlerResult(true, null); // TODO: FIX
-//    }
-
-    private static boolean saveFile(String filepath, Iterable<String> filecontent){
+    private static boolean saveMasterFile(String filepath, Iterable<String> filecontent){
         try {
-            Files.write(Path.of(filepath), filecontent);
+            Files.write(Path.of(filepath.substring(0, filepath.lastIndexOf(".")) + ".txt"), filecontent);
+            System.out.println("Content written to: " + filepath);
+            return true;
+        }
+        catch (IOException e) {
+            System.out.println("FAILED to write to: " + filepath);
+            System.out.println("ERROR: " + e);
+            return false;
+        }
+    }
+
+    private static boolean saveInfoFile(String filepath, HashMap<String, String> itemInfo){
+        List<String> content = itemInfo.entrySet().stream().map(entry -> entry.getKey() + " : " +
+                entry.getValue()).toList();
+        try {
+            Files.write(Path.of(filepath.substring(0, filepath.lastIndexOf(".")) + ".txt"), content);
             System.out.println("Content written to: " + filepath);
             return true;
         }
@@ -61,8 +48,6 @@ public class Main {
     }
 
 
-    ////
-    ///
     private static TreeSet<String> getMasterList(){
         TreeSet<String> masterList = new TreeSet<>();
         String fname = rootPath + "/" + masterFileName;
@@ -91,16 +76,36 @@ public class Main {
         return currentFileList;
     }
 
-    private HashMap<String, ArrayList<String>> compareLists(HashSet<String> currentFiles, TreeSet<String> masterList) {
+    private static HashMap<String, ArrayList<String>> compareLists(HashSet<String> currentFiles, TreeSet<String> masterList) {
         HashMap<String, ArrayList<String>> returnMap = new HashMap<String, ArrayList<String>>();
         ArrayList<String> missingItems = new ArrayList<>();
         ArrayList<String> newItems = new ArrayList<>();
+        for (var item : currentFiles) {
+            if (!masterList.contains(item)) {
+                newItems.add(item);
+            }
+        }
+        for (var item : masterList) {
+            if (!currentFiles.contains(item)) {
+                missingItems.add(item);
+            }
+        }
         returnMap.put("missingItems", missingItems);
         returnMap.put("newItems", newItems);
         return returnMap;
     }
-    private boolean remedyList(HashSet<String> masterList, ArrayList<String> missingItems, ArrayList<String> newItems){
-        return true;
+    private static void remedyList(TreeSet<String> masterList, ArrayList<String> missingItems, ArrayList<String> newItems){
+        System.out.println("First we will add all the new items to the masterlist, then we'll remove missing files.");
+        for (var item : newItems) {
+            saveInfoFile(item, getVideoInfo(item));
+            masterList.add(item);
+        }
+        for (var item : missingItems) {
+            promptDelete(item, masterList);
+            masterList.remove(item);
+        }
+        saveMasterFile("./masterlist.txt", masterList);
+        System.out.println("Masterlist brought up to date. Program Closing.");
     }
 
     private static LinkedHashMap<String, String> getVideoInfo(String filename) {
@@ -108,7 +113,9 @@ public class Main {
         System.out.println("We'll need to collect information for '"+ filename + "' file's info file.");
         for (var entry : permittedValues.entrySet()) {
             String key = entry.getKey();
-            if (key.equals("Filename")) { continue; }
+            if (key.equals("Filename")) {
+                itemInfo.put(key, filename);
+                continue; }
             String[] values = entry.getValue();
             if (values.length > 1) {
                 System.out.println("Please enter '" + key + "' of the film.");
@@ -120,7 +127,6 @@ public class Main {
                 while (true) {
                     if (cinScan.hasNextInt()){
                         int nextInt = cinScan.nextInt() - 1;
-//                        System.out.println("Next Int: " + nextInt);
                         cinScan.nextLine();
                         if (nextInt >= 0 && nextInt <= values.length){
                             itemInfo.put(key, values[nextInt]);
@@ -156,7 +162,7 @@ public class Main {
                 if (response.equals("y") || response.equals("yes")) {
                     masterList.remove(filepath);
                     try {
-                        Files.delete(Path.of(rootPath + filepath + ".txt"));
+                        Files.delete(Path.of(rootPath + "/" + filepath));
                         System.out.println("File deleted: " + filepath + ".txt");
                     } catch (IOException e) {
                         System.out.println("Couldn't delete '" + filepath + "': File missing");
@@ -179,12 +185,24 @@ public class Main {
 
     public static void main(String[] vars) {
 
-        getVideoInfo("SomeMovie.mov");
-        getMasterList();
-        runTests(
-                new TestFilelist(),
-                new TestSaveFile()
-        );
+        TreeSet<String> masterList = getMasterList();
+        HashSet<String> currentList = getFileList();
+        HashMap<String, ArrayList<String>> diffMap = compareLists(currentList, masterList);
+        if (diffMap.get("missingItems").isEmpty() && diffMap.get("newItems").isEmpty()) {
+            System.out.println("Masterlist is already update to date. Closing program.");
+        }
+        else {
+            System.out.println(diffMap.get("newItems").size() + " - Items to add.");
+            System.out.println(diffMap.get("missingItems").size() + " - Items to remove.");
+            remedyList(masterList, diffMap.get("missingItems"), diffMap.get("newItems"));
+        }
+//        promptDelete("testSave.txt", getMasterList());
+//        getVideoInfo("SomeMovie.mov");
+//        getMasterList();
+//        runTests(
+//                new TestFilelist(),
+//                new TestSaveFile()
+//        );
     }
 
     interface Test {
@@ -220,7 +238,7 @@ public class Main {
         @Override
         public boolean test() {
             ArrayList<String> testCase = new ArrayList<>(List.of("This", "Function", "Works"));
-            return saveFile(rootPath + "/testSave.txt",  testCase);
+            return saveMasterFile(rootPath + "/testSave.txt",  testCase);
         }
     }
 

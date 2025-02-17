@@ -1,0 +1,7 @@
+Filename : movie_one(2010).mp4
+ReleaseYear : 2021
+Resolution : 1920x1080
+VideoCodec : H264
+AudioCodec : AAC
+Title : Movie One
+SourceType : WEB-DL
